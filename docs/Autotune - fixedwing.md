@@ -24,7 +24,7 @@ parameter | explanation
 roll_rate | Starting roll rate for your airplane. Unless you set `fw_autotune_rate_adjustment` to `FIXED` (see below), AUTOTUNE will change this value while you fly - it's a starting point, not a ceiling it respects
 pitch_rate | Starting pitch rate for your airplane. Same caveat as `roll_rate`
 yaw_rate | Starting yaw rate for your airplane. Same caveat as `roll_rate`
-fw_autotune_rate_adjustment | Controls whether/how AUTOTUNE changes `roll_rate`/`pitch_rate`/`yaw_rate` while tuning. `AUTO` (default) raises or lowers rates to match what the plane can achieve. `LIMIT` only ever lowers them, never above what you started with. `FIXED` leaves rates untouched - use this if you want AUTOTUNE to tune FeedForward only
+fw_autotune_rate_adjustment | Controls whether/how AUTOTUNE changes `roll_rate`/`pitch_rate`/`yaw_rate` while tuning. `AUTO` (default) raises or lowers rates to match what the plane can achieve. `LIMIT` adjusts rates the same way but caps them at your starting value - it can still raise a rate it previously lowered, just never above where you started. `FIXED` leaves rates untouched - use this if you want AUTOTUNE to tune FeedForward only
 fw_autotune_min_stick | Minimum stick deflection [%] (default 50) before AUTOTUNE starts recording a maneuver as tuning data
 fw_autotune_max_rate_deflection | Target servo/mixer deflection [%] (default 90) AUTOTUNE aims for when calculating an achievable rate in `AUTO`/`LIMIT`
 fw_p_level | Self-leveling strength. Bigger value means sharper response
