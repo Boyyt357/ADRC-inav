@@ -66,6 +66,11 @@
 
 #include "programming/logic_condition.h"
 
+#define ADRC_WC_SCALE 1.0f
+#define ADRC_WO_SCALE 1.0f
+#define ADRC_B0_SCALE 10.0f
+#define ADRC_B0_FALLBACK 50.0f
+
 typedef struct {
     float aP;
     float aI;
@@ -118,6 +123,22 @@ typedef struct {
 
     fwPidAttenuation_t attenuation;
     uint16_t pidSumLimit;
+
+    // ADRC State variables
+    float adrc_z1;
+    float adrc_z2;
+    float adrc_z3;
+    float adrc_lastOutput;
+
+    // ADRC precalculated parameters and gains
+    float adrc_wc;
+    float adrc_wo;
+    float adrc_b0;
+    float adrc_kp;
+    float adrc_kd;
+    float adrc_l1;
+    float adrc_l2;
+    float adrc_l3;
 } pidState_t;
 
 STATIC_FASTRAM bool pidFiltersConfigured = false;
@@ -537,7 +558,7 @@ void updatePIDCoefficients(void)
     STATIC_FASTRAM float tpaFactorprev=-1.0f;
 
 #ifdef USE_ANTIGRAVITY
-    if (usedPidControllerType == PID_TYPE_PID) {
+    if (usedPidControllerType == PID_TYPE_PID || usedPidControllerType == PID_TYPE_ADRC) {
         antigravityThrottleHpf = rcCommand[THROTTLE] - pt1FilterApply(&antigravityThrottleLpf, rcCommand[THROTTLE]);
         iTermAntigravityGain = scaleRangef(fabsf(antigravityThrottleHpf) * antigravityAccelerator, 0.0f, 1000.0f, 1.0f, antigravityGain);
     }
@@ -587,6 +608,42 @@ void updatePIDCoefficients(void)
             pidState[axis].kFF = pidBank()->pid[axis].FF / FP_PID_RATE_FF_MULTIPLIER * tpaFactor;
             pidState[axis].kCD = 0.0f;
             pidState[axis].kT  = 0.0f;
+        }
+        else if (usedPidControllerType == PID_TYPE_ADRC) {
+            float wc = (float)pidBank()->pid[axis].P * ADRC_WC_SCALE;
+            float wo = (float)pidBank()->pid[axis].I * ADRC_WO_SCALE;
+            float b0 = (float)pidBank()->pid[axis].D * ADRC_B0_SCALE;
+
+            // Sane fallbacks for wc, wo, b0
+            if (wc < 1.0f) wc = 10.0f;
+            if (wo < 1.0f) wo = 30.0f;
+            if (b0 < 1.0f) b0 = ADRC_B0_FALLBACK * ADRC_B0_SCALE;
+
+            pidState[axis].adrc_wc = wc;
+            pidState[axis].adrc_wo = wo;
+            pidState[axis].adrc_b0 = b0;
+
+            // Controller gains (virtual PD)
+            pidState[axis].adrc_kp = wc * wc;
+            pidState[axis].adrc_kd = 2.0f * wc;
+
+            // Discrete observer pole and gains (DESO)
+            float dt = getLooptime() * 0.000001f;
+            if (dt < 0.00001f) dt = 0.000125f; // Fallback for 8kHz
+            float r = expf(-wo * dt);
+            pidState[axis].adrc_l1 = 3.0f * (1.0f - r);
+            pidState[axis].adrc_l2 = (1.0f - r) * (1.0f - r) * (5.0f + r) / (2.0f * dt);
+            pidState[axis].adrc_l3 = (1.0f - r) * (1.0f - r) * (1.0f - r) / (dt * dt);
+
+            // Compute kCD if FF is set for stick feedforward (optional CD term in ADRC)
+            const float axisTPA = (axis == FD_YAW && (!currentControlProfile->throttle.dynPID_on_YAW)) ? 1.0f : tpaFactor;
+            pidState[axis].kCD = (pidBank()->pid[axis].FF / FP_PID_RATE_D_FF_MULTIPLIER * axisTPA) / dt;
+
+            pidState[axis].kP = 0.0f;
+            pidState[axis].kI = 0.0f;
+            pidState[axis].kD = 0.0f;
+            pidState[axis].kFF = 0.0f;
+            pidState[axis].kT = 0.0f;
         }
         else {
             const float axisTPA = (axis == FD_YAW && (!currentControlProfile->throttle.dynPID_on_YAW)) ? 1.0f : tpaFactor;
@@ -957,6 +1014,84 @@ static void FAST_CODE NOINLINE pidApplyMulticopterRateController(pidState_t *pid
 #ifdef USE_BLACKBOX
     axisPID_P[pidState->axis] = newPTerm;
     axisPID_I[pidState->axis] = pidState->errorGyroIf;
+    axisPID_D[pidState->axis] = newDTerm;
+    axisPID_F[pidState->axis] = newCDTerm;
+    axisPID_Setpoint[pidState->axis] = rateTarget;
+#endif
+
+    pidState->previousRateTarget = rateTarget;
+    pidState->previousRateGyro = pidState->gyroRate;
+}
+
+static void FAST_CODE NOINLINE pidApplyADRCRateController(pidState_t *pidState, float dT, float dT_inv)
+{
+    const float rateTarget = getFlightAxisRateOverride(pidState->axis, pidState->rateTarget);
+
+    if (!ARMING_FLAG(ARMED)) {
+        // Reset ADRC states when disarmed to prevent violent jumps on startup or re-arming
+        pidState->adrc_z1 = pidState->gyroRate;
+        pidState->adrc_z2 = 0.0f;
+        pidState->adrc_z3 = 0.0f;
+        pidState->adrc_lastOutput = 0.0f;
+    }
+
+    // Retrieve precalculated ADRC parameters and gains
+    float b0 = pidState->adrc_b0;
+    float kp = pidState->adrc_kp;
+    float kd = pidState->adrc_kd;
+
+    float error_eso = pidState->adrc_z1 - pidState->gyroRate;
+    float dt = dT;
+    float dt2_2 = 0.5f * dt * dt;
+    float u = pidState->adrc_lastOutput;
+
+    // Discrete Extended State Observer (DESO) Update (Zero-Order Hold discretization)
+    float z3_b0_u = pidState->adrc_z3 + b0 * u;
+    float z1_next = pidState->adrc_z1 + dt * pidState->adrc_z2 + dt2_2 * z3_b0_u - pidState->adrc_l1 * error_eso;
+    float z2_next = pidState->adrc_z2 + dt * z3_b0_u - pidState->adrc_l2 * error_eso;
+    float z3_next = pidState->adrc_z3 - pidState->adrc_l3 * error_eso;
+
+    pidState->adrc_z1 = z1_next;
+    pidState->adrc_z2 = z2_next;
+    pidState->adrc_z3 = z3_next;
+
+    // Anti-windup clamping on the estimated disturbance state (z3)
+    const uint16_t limit = pidState->pidSumLimit;
+    float itermLimit = limit;
+    if (pidProfile()->pidItermLimitPercent != 0) {
+        itermLimit = limit * pidProfile()->pidItermLimitPercent * 0.01f;
+    }
+    pidState->adrc_z3 = constrainf(pidState->adrc_z3, -itermLimit * b0, itermLimit * b0);
+
+    // Apply boosted virtual PD controller gains using Antigravity boost
+    float antiGravityBoost = 1.0f;
+#ifdef USE_ANTIGRAVITY
+    if (pidState->axis != FD_YAW) {
+        antiGravityBoost = iTermAntigravityGain;
+    }
+#endif
+    float kp_boosted = kp * antiGravityBoost;
+    float kd_boosted = kd * sqrtf(antiGravityBoost); // To maintain critical damping ratio of 1.0
+
+    // Assign to P, I, D components
+    float newPTerm = (kp_boosted * (rateTarget - pidState->adrc_z1)) / b0;
+    float newDTerm = (-kd_boosted * pidState->adrc_z2) / b0;
+    float newITerm = (-pidState->adrc_z3) / b0;
+
+    // Standard feedforward / control derivative
+    const float rateTargetDelta = rateTarget - pidState->previousRateTarget;
+    const float rateTargetDeltaFiltered = pt3FilterApply(&pidState->rateTargetFilter, rateTargetDelta);
+    const float newCDTerm = rateTargetDeltaFiltered * pidState->kCD;
+
+    const float newOutput = newPTerm + newDTerm + newITerm + newCDTerm;
+    const float newOutputLimited = constrainf(newOutput, -limit, +limit);
+
+    pidState->adrc_lastOutput = newOutputLimited;
+    axisPID[pidState->axis] = newOutputLimited;
+
+#ifdef USE_BLACKBOX
+    axisPID_P[pidState->axis] = newPTerm;
+    axisPID_I[pidState->axis] = newITerm;
     axisPID_D[pidState->axis] = newDTerm;
     axisPID_F[pidState->axis] = newCDTerm;
     axisPID_Setpoint[pidState->axis] = rateTarget;
@@ -1409,6 +1544,8 @@ void pidInit(void)
         pidControllerApplyFn = pidApplyFixedWingRateController;
     } else if (usedPidControllerType == PID_TYPE_PID) {
         pidControllerApplyFn = pidApplyMulticopterRateController;
+    } else if (usedPidControllerType == PID_TYPE_ADRC) {
+        pidControllerApplyFn = pidApplyADRCRateController;
     } else {
         pidControllerApplyFn = nullRateController;
     }
