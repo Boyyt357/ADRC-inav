@@ -135,7 +135,7 @@ tables:
     values: ["NONE", "AUTO", "ADC", "CHANNEL", "PROTOCOL", "MSP"]
     enum: rssiSource_e
   - name: pidTypeTable
-    values: ["NONE", "PID", "PIFF", "AUTO"]
+    values: ["NONE", "PID", "PIFF", "ADRC", "AUTO"]
     enum: pidType_e
   - name: osd_ahi_style
     values: ["DEFAULT", "LINE"]
