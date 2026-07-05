@@ -29,8 +29,9 @@ Depending on your hardware setup and tuning preferences, this project offers two
 ## **🛠️ Compilation & Installation (WSL / Ubuntu)**
 
 You can clone the repository, install all necessary system packages, configure the workspace, and compile the custom firmware for the **DAKE FPV F405** flight controller using this single automated terminal command:
-
-git clone \[https://github.com/Boyyt357/ADRC-inav.git\](https://github.com/Boyyt357/ADRC-inav.git) && sudo apt update && sudo apt upgrade \-y && sudo apt install git make ruby cmake gcc build-essential \-y && cd ADRC-inav && mkdir build && cd build && cmake .. && make DAKEFPVF405
+```bash
+git clone https://github.com/Boyyt357/ADRC-inav.git && sudo apt update && sudo apt upgrade -y && sudo apt install git make ruby cmake gcc build-essential -y &&  cd ADRC-inav && mkdir build && cd build && cmake .. && make DAKEFPVF405
+```
 
 Once compilation completes, you will find your custom .hex binary ready for flashing inside the build/ directory.
 
