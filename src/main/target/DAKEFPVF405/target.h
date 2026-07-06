@@ -101,6 +101,8 @@
 #define MAX7456_CS_PIN          PB12
 
 // CAMERA_CONTROL
+// PA8 is currently inert (no INAV driver consumes CAMERA_CONTROL_PIN yet). Candidate for
+// migration to a PWM-capable PINIO once that lands in 10.0.
 #define CAMERA_CONTROL_PIN      PA8
 
 // Serial ports
