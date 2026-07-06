@@ -72,12 +72,9 @@
 #define BMI270_SPI_BUS          BUS_SPI1
 #define BMI270_CS_PIN           PA4
 
-#define USE_IMU_ICM42688P
-#define IMU_ICM42688P_ALIGN     CW90_DEG
-#define ICM42688P_CS_PIN        PA4
-#define ICM42688P_SPI_BUS       BUS_SPI1
+// ICM42688P driver handled by USE_IMU_ICM42605 above (shares WHO_AM_I detection)
 
-//Baro 
+//Baro
 #define USE_BARO
 #define USE_BARO_BMP280
 #define BMP280_SPI_BUS          BUS_SPI2
