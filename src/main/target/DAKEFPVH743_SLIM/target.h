@@ -24,7 +24,7 @@
 #define LED1                    PD11
 #define LED2                    PA8
 
-#define BEEPER_PIN              PE10 
+#define BEEPER              PE10
 #define BEEPER_INVERTED
 #define USE_DSHOT_DMAR
 // Buses
@@ -124,6 +124,8 @@
 #define UART5_RX_PIN         PB5
 #define UART6_TX_PIN         PC6
 #define UART6_RX_PIN         PC7
+
+#define USE_UART7_PIN_SWAP
 #define UART7_TX_PIN         PE8
 #define UART7_RX_PIN         PE7
 #define UART8_TX_PIN         PE1
