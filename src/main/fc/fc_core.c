@@ -37,10 +37,14 @@
 #include "drivers/time.h"
 #include "drivers/system.h"
 #include "drivers/pwm_output.h"
+#include "drivers/pwm_mapping.h"
 
 #include "sensors/sensors.h"
 #include "sensors/diagnostics.h"
 #include "sensors/boardalignment.h"
+#ifdef USE_CMS
+#include "cms/cms.h"
+#endif
 #include "sensors/acceleration.h"
 #include "sensors/barometer.h"
 #include "sensors/compass.h"
@@ -74,6 +78,7 @@
 #include "msp/msp_serial.h"
 
 #include "navigation/navigation.h"
+#include "navigation/navigation_vtol_mc_protection.h"
 
 #include "rx/rx.h"
 #include "rx/msp.h"
@@ -84,6 +89,8 @@
 
 #include "flight/mixer_profile.h"
 #include "flight/mixer.h"
+
+#include "io/motor_srxl2.h"
 #include "flight/servos.h"
 #include "flight/pid.h"
 #include "flight/imu.h"
@@ -120,7 +127,7 @@ int16_t headFreeModeHold;
 uint8_t motorControlEnable = false;
 
 static bool isRXDataNew;
-static disarmReason_t lastDisarmReason = DISARM_NONE;
+static disarmReason_e lastDisarmReason = DISARM_NONE;
 timeUs_t lastDisarmTimeUs = 0;
 timeMs_t emergRearmStabiliseTimeout = 0;
 
@@ -297,7 +304,29 @@ static void updateArmingStatus(void)
         }
 
         /* CHECK: */
-        if (!isHardwareHealthy()) {
+        bool escLinkMissing = false;
+#ifdef USE_MOTOR_SRXL2
+        /*
+         * An SRXL2 ESC announces itself in the third of a second after it gains
+         * power, and is silent from then on: if that announcement is missed the
+         * link never forms, and the throttle reaches nothing. Arming meanwhile
+         * commands a motor that is not listening - the model looks armed, the
+         * telemetry looks sane, and the propeller does not turn.
+         *
+         * Refuse to arm until the link is actually up. Where both come up on the
+         * same battery this costs about a second at power-up and is invisible;
+         * where it does not, it is the difference between finding out on the
+         * bench and finding out on the takeoff roll.
+         */
+        escLinkMissing = (motorConfig()->motorPwmProtocol == PWM_TYPE_SRXL2)
+                         && !srxl2MotorIsConnected();
+#ifdef USE_SIMULATOR
+        // Not while a simulator flies the aircraft: HITL disables the outputs itself, so
+        // there is no motor to command and nothing this would protect
+        escLinkMissing = escLinkMissing && !ARMING_FLAG(SIMULATOR_MODE_HITL);
+#endif
+#endif
+        if (!isHardwareHealthy() || escLinkMissing) {
             ENABLE_ARMING_FLAG(ARMING_DISABLED_HARDWARE_FAILURE);
         }
         else {
@@ -383,13 +412,31 @@ static bool emergencyArmingIsEnabled(void)
     return emergencyArmingUpdate(IS_RC_MODE_ACTIVE(BOXARM), false) && emergencyArmingCanOverrideArmingDisabled();
 }
 
-static void processPilotAndFailSafeActions(float dT)
+static RP2350_FAST_CODE void processPilotAndFailSafeActions(float dT)
 {
     if (failsafeShouldApplyControlInput()) {
         // Failsafe will apply rcCommand for us
         failsafeApplyControlInput();
     }
     else {
+#ifdef USE_CMS
+        // In-flight CMS menu: override stick commands with neutral values
+        // so the aircraft continues flying in its current nav mode.
+        // Throttle passes through since nav modes manage it automatically.
+        // IMPORTANT: Do not skip failsafeUpdateRcCommandValues() - the failsafe
+        // system must keep receiving updates to detect RC link loss.
+        if (cmsInMenu && ARMING_FLAG(ARMED)) {
+            rcCommand[ROLL]  = 0;
+            rcCommand[PITCH] = 0;
+            rcCommand[YAW]   = 0;
+            rcCommand[THROTTLE] = throttleStickMixedValue();
+
+            if (isRXDataNew) {
+                failsafeUpdateRcCommandValues();
+            }
+            return;
+        }
+#endif
         // Compute ROLL PITCH and YAW command.
         // Only recompute when the RX task has delivered new data (~50 Hz).
         {
@@ -418,14 +465,17 @@ static void processPilotAndFailSafeActions(float dT)
         } else {
             DEBUG_SET(DEBUG_RATE_DYNAMICS, 0, rcCommand[ROLL]);
             rcCommand[ROLL] = applyRateDynamics(rcCommand[ROLL], ROLL, dT);
-            DEBUG_SET(DEBUG_RATE_DYNAMICS, 1, rcCommand[ROLL]);
 
             DEBUG_SET(DEBUG_RATE_DYNAMICS, 2, rcCommand[PITCH]);
             rcCommand[PITCH] = applyRateDynamics(rcCommand[PITCH], PITCH, dT);
-            DEBUG_SET(DEBUG_RATE_DYNAMICS, 3, rcCommand[PITCH]);
 
             DEBUG_SET(DEBUG_RATE_DYNAMICS, 4, rcCommand[YAW]);
             rcCommand[YAW] = applyRateDynamics(rcCommand[YAW], YAW, dT);
+
+            navigationVtolMcProtectionApplyStabilizedCommandShaping(&rcCommand[ROLL], &rcCommand[PITCH], &rcCommand[YAW]);
+
+            DEBUG_SET(DEBUG_RATE_DYNAMICS, 1, rcCommand[ROLL]);
+            DEBUG_SET(DEBUG_RATE_DYNAMICS, 3, rcCommand[PITCH]);
             DEBUG_SET(DEBUG_RATE_DYNAMICS, 5, rcCommand[YAW]);
 
         }
@@ -449,7 +499,7 @@ static void processPilotAndFailSafeActions(float dT)
     }
 }
 
-void disarm(disarmReason_t disarmReason)
+void disarm(disarmReason_e disarmReason)
 {
     if (ARMING_FLAG(ARMED)) {
         lastDisarmReason = disarmReason;
@@ -464,6 +514,7 @@ void disarm(disarmReason_t disarmReason)
 #endif
         statsOnDisarm();
         logicConditionReset();
+        navigationVtolMcProtectionResetTransientStates();
 
 #ifdef USE_PROGRAMMING_FRAMEWORK
         programmingPidReset();
@@ -478,7 +529,7 @@ timeUs_t getLastDisarmTimeUs(void) {
     return lastDisarmTimeUs;
 }
 
-disarmReason_t getDisarmReason(void)
+disarmReason_e getDisarmReason(void)
 {
     return lastDisarmReason;
 }
@@ -617,6 +668,17 @@ void tryArm(void)
             beeperConfirmationBeeps(1);
         }
     }
+}
+
+bool fcSetArmState(bool arm)
+{
+    if (arm) {
+        tryArm();
+    } else {
+        disarm(DISARM_SWITCH);
+    }
+
+    return ARMING_FLAG(ARMED) == arm;
 }
 
 #define TELEMETRY_FUNCTION_MASK (FUNCTION_TELEMETRY_HOTT | FUNCTION_TELEMETRY_SMARTPORT | FUNCTION_TELEMETRY_LTM | FUNCTION_TELEMETRY_MAVLINK | FUNCTION_TELEMETRY_IBUS)
@@ -925,7 +987,7 @@ void taskMainPidLoop(timeUs_t currentTimeUs)
 {
 
     cycleTime = getTaskDeltaTime(TASK_SELF);
-    dT = (float)cycleTime * 0.000001f;
+    dT = US2S(cycleTime);
 
     bool fwLaunchIsActive = STATE(AIRPLANE) && isNavLaunchEnabled() && armTime == 0;
 
@@ -992,7 +1054,7 @@ void taskMainPidLoop(timeUs_t currentTimeUs)
     // Calculate stabilisation
     pidController(dT);
 
-    mixTable();
+    mixTable(dT);
 
     if (isMixerUsingServos()) {
         servoMixer(dT);

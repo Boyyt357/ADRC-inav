@@ -1,96 +1,137 @@
-# **ADRC-INAV 🚀**
+# INAV - navigation capable flight controller
 
-Welcome to **ADRC-INAV**, a developmental fork of INAV that introduces **Active Disturbance Rejection Control (ADRC)** to flight stabilization and navigation.
+# INAV Documentation
+> For documentation on using INAV, see our new docs site at [inavflight.github.io](https://inavflight.github.io/)
 
-Instead of reacting entirely to past errors like traditional PID loops, ADRC utilizes an **Extended State Observer (ESO)**. The ESO estimates real-time external disturbances (wind gusts, voltage drops, aerodynamical shifts, center-of-gravity changes) as a single "total disturbance" value and actively cancels it out instantly.
+# F411 PSA
 
-## **🧠 Why ADRC? (ADRC vs. Traditional PID)**
+> INAV no longer accepts targets based on STM32 F411 MCU.
 
-* **Simplified Tuning:** No more balancing P, I, and D gains against each other. With ADRC, you are primarily tuning a single, intuitive parameter: the controller's **bandwidth**.  
-* **Aggressive Disturbance Rejection:** The aircraft fights wind and turbulent environments much more actively, ensuring a locked-in and ultra-stable flight experience.  
-* **Smooth Stick Feel:** Exceptional tracking response that translates to incredibly natural and linear control inputs.
+> INAV 7 was the last INAV official release available for F411 based flight controllers. INAV 8 is not officially available for F411 boards and the team has not tested either. Issues that can't be reproduced on other MCUs may not be fixed and the targets for F411 targets may eventually be completelly removed from future releases.
 
-## **💾 The Two Firmware Variants**
+# ICM426xx IMUs PSA
 
-Depending on your hardware setup and tuning preferences, this project offers two distinct operational modes:
+> The filtering settings for the ICM426xx has changed to match what is used by Ardupilot and Betaflight in INAV 7.1. When upgrading from older versions you may need to recalibrate the Accelerometer and if you are not using INAV's default tune you may also want to check if the tune is still good.
 
-### **1\. Basic ADRC (Half ADRC) — *Main Branch***
+# M7, M6 and older UBLOX GPS units PSA
 
-* **Core Flight Axes:** ADRC strictly handles **Pitch, Roll, and Yaw**.  
-* **Navigation & Alt-Hold:** Automatically falls back to standard, highly-optimized INAV PID controls for Barometer altitude and GPS position tracking.  
-* **Why use it?** INAV’s default PID parameters for altitude and GPS tracking are already incredibly well-optimized. If you want a reliable, rock-solid cruiser with incredibly smooth manual stick feel without overcomplicating autonomous modes, this is the default version.
+> INAV 8.0 marked those GPS as deprecated and INAV 9.0.0 and higher require UBLOX units with Protocol version 15.00 or newer. This means that you need a GPS unit based on UBLOX M8 or newer.
 
-### **2\. Full ADRC — *Experimental (Available in Releases)***
 
-* **Core & Nav Axes:** ADRC handles absolutely everything (Pitch, Roll, Yaw, Baro Altitude Hold, and GPS Position Hold).  
-* **The Catch:** Barometers and GPS sensors are inherently noisy. Because ADRC constantly tries to estimate and correct for instantaneous errors, noisy sensor data can cause the controller to over-correct ("chase ghosts").  
-* **Why use it?** For control theory nerds and developers who love pushing the boundaries of autonomous estimation and filtering. You can download the compiled full-ADRC binaries directly from the **Releases** tab.
+> M8, M9 and M10 GPS are the most common units in use today, are readly available and have similar capabilities.
+>Mantaining and testing GPS changes across this many UBLOX versions is a challenge and takes a lot of time. Removing the support for older devices will simplify code.
 
-## **🛠️ Compilation & Installation (WSL / Ubuntu)**
+![INAV](http://static.rcgroups.net/forums/attachments/6/1/0/3/7/6/a9088858-102-inav.png)
 
-You can clone the repository, install all necessary system packages, configure the workspace, and compile the custom firmware for the **DAKE FPV F405** flight controller using this single automated terminal command:
-```bash
-git clone https://github.com/Boyyt357/ADRC-inav.git && sudo apt update && sudo apt upgrade \-y && sudo apt install git make ruby cmake gcc build-essential \-y && cd ADRC-inav && mkdir build && cd build && cmake .. && make DAKEFPVF405
-```
-Once compilation completes, you will find your custom .hex binary ready for flashing inside the build/ directory.
+# INAV Community
 
-## **🔧 How to Enable ADRC**
+* [INAV Discord Server](https://discord.gg/peg2hhbYwN)
+* [INAV Official on Facebook](https://www.facebook.com/groups/INAVOfficial)
 
-Simply flashing the firmware is not enough to switch control architectures. Once the firmware is flashed onto your flight controller, you **must** manually activate the ADRC control loop via the CLI.
+## Downloads
 
-1. Connect your flight controller and open the **INAV Configurator**.  
-2. Navigate to the **CLI** tab.  
-3. Paste the following commands and press Enter:  
-   set pid\_type \= ADRC  
-   save
+### INAV Configurator
 
-4. Your flight controller will reboot, and ADRC will now handle your flight dynamics\!
+**Get the latest version:** **[Download INAV Configurator](https://github.com/iNavFlight/inav-configurator/releases/latest)** - Available for Windows, macOS, and Linux
 
-## **⚠️ Critical Upstream PSAs (Must Read\!)**
+The INAV Configurator is the official desktop application for configuring your INAV flight controller. Choose your platform from the Assets section on the releases page.
 
-If you are upgrading from an older flight controller setup or older firmware, take note of these key changes:
+### INAV Firmware
 
-### **1\. STM32 F411 Deprecation**
+**Get the latest firmware:** **[Download INAV Firmware](https://github.com/iNavFlight/inav/releases/latest)**
 
-\[\!WARNING\]
+Download the latest INAV flight controller firmware. Flash it to your flight controller using the configurator.
 
-INAV no longer officially accepts targets based on the STM32 F411 MCU. INAV 7 was the final release for these boards. This ADRC branch targets more modern MCUs (like the F405 on the **DAKE FPV F405**).
+## Features
 
-### **2\. ICM426xx IMU Filtering**
+* Runs on the most popular F4, AT32, F7 and H7 flight controllers
+* On Screen Display (OSD) - both character and pixel style
+* DJI OSD integration: all elements, system messages and warnings
+* Outstanding performance out of the box
+* Position Hold, Altitude Hold, Return To Home and Waypoint Missions
+* Excellent support for fixed wing UAVs: airplanes, flying wings
+* Blackbox flight recorder logging
+* Advanced gyro filtering
+* Fully configurable mixer that allows to run any hardware you want: multirotor, fixed wing, rovers, boats and other experimental devices
+* Multiple sensor support: GPS, Pitot tube, sonar, lidar, temperature, ESC with BlHeli_32 telemetry
+* Logic Conditions, Global Functions and Global Variables: you can program INAV with a GUI
+* SmartAudio and IRC Tramp VTX support
+* Telemetry: SmartPort, FPort, MAVlink, LTM, CRSF
+* Multi-color RGB LED Strip support
+* And many more!
 
-\[\!IMPORTANT\]
+For a list of features, changes and some discussion please review consult the releases [page](https://github.com/iNavFlight/inav/releases) and the documentation.
 
-The filtering settings for the ICM426xx IMU match the advanced defaults used by Ardupilot and Betaflight. When upgrading from older INAV setups, **you must recalibrate your Accelerometer** and verify your tune.
+## Tools
 
-### **3\. GPS Module Requirements (M8 or Newer)**
+### INAV Configurator
 
-\[\!WARNING\]
+Official tool for INAV can be downloaded [here](https://github.com/iNavFlight/inav-configurator/releases). It can be run on Windows, MacOS and Linux machines and standalone application.
 
-Legacy GPS modules (UBLOX M6, M7, and older) are deprecated. This project requires GPS units supporting **UBLOX Protocol version 15.00 or newer** (UBLOX M8, M9, or M10).
+### INAV Blackbox Explorer
 
-You can verify your module protocol version by running the status command in the INAV CLI.
+Tool for Blackbox logs analysis is available [here](https://github.com/iNavFlight/blackbox-log-viewer/releases)
 
-## **🧰 Official Ecosystem Tools**
+### INAV Blackbox Tools
 
-Configure and monitor your ADRC flights using the standard ecosystem tools:
+Command line tools (`blackbox_decode`, `blackbox_render`) for Blackbox log conversion and analysis [here](https://github.com/iNavFlight/blackbox-tools).
 
-* [**INAV Configurator**](https://github.com/iNavFlight/inav-configurator/releases): The desktop application used for flashing and configuring settings.  
-* [**INAV Blackbox Explorer**](https://github.com/iNavFlight/blackbox-log-viewer/releases): Essential tool for visualizing state estimator variables and gyro tracking performance.  
-* [**EdgeTX/OpenTX Telemetry Widget**](https://github.com/iNavFlight/OpenTX-Telemetry-Widget): Highly customizable real-time telemetry display on your radio transmitter.
+### Telemetry screen for EdgeTX and OpenTX
 
-## **🤝 Contributing & Feedback**
+Users of EdgeTX and OpenTX radios (Taranis, Horus, Jumper, Radiomaster, Nirvana) can use INAV OpenTX Telemetry Widget screen. Software and installation instruction are available here: [https://github.com/iNavFlight/OpenTX-Telemetry-Widget](https://github.com/iNavFlight/OpenTX-Telemetry-Widget)
 
-This is an actively developing project. Bug reports, logic optimization pull requests, and flight logs are highly appreciated\!
+### OSD layout Copy, Move, or Replace helper tool
 
-Feel free to open an **Issue** or submit a **Pull Request** if you have improvements for the Extended State Observer algorithms or new target definitions.
+[Easy INAV OSD switcher tool](https://www.mrd-rc.com/tutorials-tools-and-testing/useful-tools/inav-osd-switcher-tool/) allows you to easily switch your OSD layouts around in INAV. Choose the from and to OSD layouts, and the method of transfering the layouts.
 
-*Fly safe, fly smart, and enjoy the power of Active Disturbance Rejection Control\!*
+## Installation
 
-eof
+See: https://github.com/iNavFlight/inav/blob/master/docs/Installation.md
 
-### **Summary of Changes**
+## Documentation, support and learning resources
+* [INAV 5 on a flying wing full tutorial](https://www.youtube.com/playlist?list=PLOUQ8o2_nCLkZlulvqsX_vRMfXd5zM7Ha)
+* [INAV on a multirotor drone tutorial](https://www.youtube.com/playlist?list=PLOUQ8o2_nCLkfcKsWobDLtBNIBzwlwRC8)
+* [Fixed Wing Guide](docs/INAV_Fixed_Wing_Setup_Guide.pdf)
+* [Autolaunch Guide](docs/INAV_Autolaunch.pdf)
+* [Modes Guide](docs/INAV_Modes.pdf)
+* [Wing Tuning Masterclass](docs/INAV_Wing_Tuning_Masterclass.pdf)
+* [Official documentation](https://github.com/iNavFlight/inav/tree/master/docs)
+* [Official Wiki](https://github.com/iNavFlight/inav/wiki)
+* [Video series by Paweł Spychalski](https://www.youtube.com/playlist?list=PLOUQ8o2_nCLloACrA6f1_daCjhqY2x0fB)
+* [Target documentation](https://github.com/iNavFlight/inav/tree/master/docs/boards)
 
-* **Added "How to Enable ADRC" section**: Highlighted the essential CLI step-by-step commands (set pid\_type \= ADRC and save) so users don't accidentally fly on default PID settings after flashing.  
-* **Fixed markdown formatting escapes**: Cleaned up backslashes (\\) on lists and warning callouts so that it displays perfectly as native markdown panels and exports smoothly into clean text/DOC formats.
+## Contributing
 
-Let me know if you would like me to add any additional CLI parameters (such as bandwidth tuning commands) to this guide\!
+Contributions are welcome and encouraged.  You can contribute in many ways:
+
+* Documentation updates and corrections.
+* How-To guides - received help?  help others!
+* Bug fixes.
+* New features.
+* Telling us your ideas and suggestions.
+* Buying your hardware from this [link](https://inavflight.com/shop/u/bg/)
+
+A good place to start is the Discord channel, Telegram channel or Facebook group. Drop in, say hi.
+
+Github issue tracker is a good place to search for existing issues or report a new bug/feature request:
+
+https://github.com/iNavFlight/inav/issues
+
+https://github.com/iNavFlight/inav-configurator/issues
+
+Before creating new issues please check to see if there is an existing one, search first otherwise you waste peoples time when they could be coding instead!
+
+## Developers
+
+Please refer to the development section in the [docs/development](https://github.com/iNavFlight/inav/tree/master/docs/development) folder.
+
+Nightly builds are available for testing on the following links:
+
+https://github.com/iNavFlight/inav-nightly/releases
+
+https://github.com/iNavFlight/inav-configurator-nightly/releases
+
+## INAV Releases
+https://github.com/iNavFlight/inav/releases
+
+
