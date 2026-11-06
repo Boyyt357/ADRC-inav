@@ -88,7 +88,7 @@ This firmware introduces four selectable control architectures in INAV's rate lo
 * **Theory:** Defines a 2nd-order sliding surface (an ideal flight hyperplane track):
   $$s = e + \lambda \int e \, dt$$
   Uses continuous 2nd-order Super-Twisting integration to drive the state onto the sliding manifold without high-frequency control chattering:
-  $$u = -k_1 |s|^{1/2} \operatorname{sgn}(s) + v, \quad \dot{v} = -k_2 \operatorname{sgn}(s)$$
+  $$u = -k_1 |s|^{1/2} \mathrm{sgn}(s) + v, \quad \dot{v} = -k_2 \mathrm{sgn}(s)$$
 * **Key Benefits:** Extreme robustness against violent aerodynamic buffeting, sudden payload shifts, and severe frame asymmetries.
 
 ### 3. L1-Adaptive Control (L1-AC)
