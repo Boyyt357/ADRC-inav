@@ -376,8 +376,8 @@ jobs:
           path: ./build_SITL/*_SITL
 
   build-SITL-Mac:
+    if: github.repository == 'iNavFlight/inav'
     runs-on: macos-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
