@@ -151,7 +151,7 @@ jobs:
       - name: Build targets (${{ matrix.id }})
         run: mkdir -p build && cd build && cmake -DWARNINGS_AS_ERRORS=ON -DCI_JOB_INDEX=${{ matrix.id }} -DCI_JOB_COUNT=${{ strategy.job-total }} -DBUILD_SUFFIX=${{ env.BUILD_SUFFIX }} -DMAIN_COMPILE_OPTIONS=-pipe -G Ninja .. && ninja -j${{ env.NUM_CORES }} ci
       - name: Extract size report
-        run: .github/scripts/extract-size-report.sh build build/size-report.json
+        run: bash .github/scripts/extract-size-report.sh build build/size-report.json
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -193,7 +193,7 @@ jobs:
       - name: Build targets (${{ needs.detect.outputs.target_names }})
         run: mkdir -p build && cd build && cmake -DWARNINGS_AS_ERRORS=ON -DBUILD_SUFFIX=${{ env.BUILD_SUFFIX }} -DMAIN_COMPILE_OPTIONS=-pipe -G Ninja .. && ninja -j${{ env.NUM_CORES }} ${{ needs.detect.outputs.target_names }}
       - name: Extract size report
-        run: .github/scripts/extract-size-report.sh build build/size-report.json
+        run: bash .github/scripts/extract-size-report.sh build build/size-report.json
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -295,7 +295,7 @@ jobs:
           pattern: size-report-*
           path: size-reports
       - name: Merge size reports
-        run: .github/scripts/merge-size-reports.sh size-report.json size-reports/*/size-report.json
+        run: bash .github/scripts/merge-size-reports.sh size-report.json size-reports/*/size-report.json
       - name: Upload merged size report
         uses: actions/upload-artifact@v4
         with:
