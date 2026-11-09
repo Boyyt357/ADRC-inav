@@ -15,6 +15,7 @@ on:
 
 jobs:
   sweep:
+    if: github.repository == 'iNavFlight/inav'
     runs-on: ubuntu-latest
     permissions:
       contents: read
